@@ -1,0 +1,316 @@
+'use client';
+
+import TestContractABI from '@/abi/TestContract.json';
+import { Button, LiveFeedback } from '@worldcoin/mini-apps-ui-kit-react';
+import { MiniKit } from '@worldcoin/minikit-js';
+import { useWaitForTransactionReceipt } from '@worldcoin/minikit-react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { createPublicClient, http } from 'viem';
+import { worldchain } from 'viem/chains';
+import { ethers } from 'ethers';
+
+// Custom type for finalPayload based on observed structure
+interface MiniAppTransactionPayload {
+  status?: string;
+  description?: string;
+  mini_app_id?: string;
+  version?: number;
+  transaction_id?: string;
+  // Use unknown for dynamic properties
+  [key: string]: unknown;
+}
+
+interface TransactionProps {
+  walletAddress: string | undefined;
+  hasClaimed?: boolean | null;
+  onSuccess?: () => void;
+  onError?: (error: string | Error) => void;
+  onClaimStatusUpdate?: (hasClaimed: boolean) => void;
+}
+
+export const Transaction = ({
+  walletAddress,
+  hasClaimed,
+  onSuccess,
+  onError,
+  onClaimStatusUpdate,
+}: TransactionProps) => {
+  const [buttonState, setButtonState] = useState<'pending' | 'success' | 'failed' | undefined>(undefined);
+  const [transactionId, setTransactionId] = useState<string>('');
+  const [balance, setBalance] = useState<string>('0');
+  const [remainingTime, setRemainingTime] = useState<number>(0);
+  const [localHasClaimed, setLocalHasClaimed] = useState<boolean | null>(hasClaimed ?? null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || '0xFc412dfA69B469deD63664E82A89857E1E49C132';
+  const appId = process.env.NEXT_PUBLIC_APP_ID;
+  if (!tokenAddress) {
+    throw new Error('NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS is not set in .env');
+  }
+  if (!appId) {
+    throw new Error('NEXT_PUBLIC_APP_ID is not set in .env');
+  }
+
+  const rpcUrl = 'https://worldchain-mainnet.g.alchemy.com/public';
+  const provider = useMemo(() => new ethers.JsonRpcProvider(rpcUrl), [rpcUrl]);
+
+  const contract = useMemo(() => new ethers.Contract(tokenAddress, TestContractABI, provider), [tokenAddress, provider]);
+
+  const fetchBalance = useCallback(async () => {
+    if (!walletAddress || walletAddress === '0x0') {
+      setBalance('0');
+      return;
+    }
+    try {
+      const balanceBigInt = await contract.balanceOf(walletAddress);
+      const balanceInTokens = ethers.formatUnits(balanceBigInt, 18);
+      setBalance(parseFloat(balanceInTokens).toFixed(2));
+      console.log(`Balance for ${walletAddress}: ${balanceInTokens} Rash`);
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+      setBalance('0');
+      setErrorMessage('Failed to fetch balance');
+    }
+  }, [walletAddress, contract]);
+
+  const checkTimeUntilNextClaim = useCallback(async () => {
+    if (!walletAddress || walletAddress === '0x0') {
+      setRemainingTime(0);
+      setLocalHasClaimed(false);
+      return;
+    }
+    try {
+      const time = await contract.getNextClaimTime(walletAddress);
+      const remainingSeconds = Number(time);
+      const lastClaim = Number(await contract.lastClaimTime(walletAddress));
+      const balanceBigInt = await contract.balanceOf(walletAddress);
+
+      console.log(`lastClaimTime for ${walletAddress}: ${lastClaim} (Unix timestamp)`);
+      console.log(`getNextClaimTime for ${walletAddress}: ${remainingSeconds} seconds`);
+      console.log(`Balance for ${walletAddress}: ${ethers.formatUnits(balanceBigInt, 18)} Rash`);
+
+      const hasClaimedFromContract = lastClaim > 0 || balanceBigInt > 0;
+      console.log(`Calculated hasClaimed for ${walletAddress}: ${hasClaimedFromContract}`);
+
+      setLocalHasClaimed(hasClaimedFromContract);
+
+      if (hasClaimedFromContract) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const timeSinceLastClaim = currentTime - lastClaim;
+        const claimPeriod = 24 * 60 * 60;
+        const newRemainingTime = Math.max(0, claimPeriod - timeSinceLastClaim);
+        setRemainingTime(newRemainingTime);
+      } else {
+        setRemainingTime(remainingSeconds > 0 ? remainingSeconds : 0);
+      }
+
+      if (onClaimStatusUpdate) onClaimStatusUpdate(hasClaimedFromContract);
+    } catch (error) {
+      console.error('Error checking time until next claim:', error);
+      setRemainingTime(0);
+      setLocalHasClaimed(false);
+      setErrorMessage('Failed to check claim status');
+      if (onError) onError('Failed to check claim status');
+    }
+  }, [walletAddress, contract, onClaimStatusUpdate, onError]);
+
+  const formatCountdown = (seconds: number) => {
+    if (seconds <= 0 && !localHasClaimed) return 'Get Token';
+    const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return `Wait ${hours}h ${minutes}m ${secs}s`;
+  };
+
+  useEffect(() => {
+    if (!walletAddress || walletAddress === '0x0') return;
+    fetchBalance();
+    checkTimeUntilNextClaim();
+
+    const syncInterval = setInterval(() => {
+      if (walletAddress && walletAddress !== '0x0') {
+        fetchBalance();
+        checkTimeUntilNextClaim();
+      }
+    }, 5000);
+
+    const countdownInterval = setInterval(() => {
+      setRemainingTime((prev) => {
+        const newTime = Math.max(0, prev - 1);
+        return newTime;
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(syncInterval);
+      clearInterval(countdownInterval);
+    };
+  }, [walletAddress, fetchBalance, checkTimeUntilNextClaim]);
+
+  const client = createPublicClient({
+    chain: worldchain,
+    transport: http(rpcUrl),
+  });
+
+  const { isLoading: isConfirming, isSuccess: isConfirmed, isError, error } = useWaitForTransactionReceipt({
+    client,
+    appConfig: { app_id: appId as `app_${string}` },
+    transactionId,
+  });
+
+  useEffect(() => {
+    if (transactionId && !isConfirming) {
+      if (isConfirmed) {
+        setButtonState('success');
+        fetchBalance();
+        checkTimeUntilNextClaim();
+        setLocalHasClaimed(true);
+        setRemainingTime(24 * 60 * 60);
+        if (onClaimStatusUpdate) onClaimStatusUpdate(true);
+        if (onSuccess) onSuccess();
+        setTimeout(() => setButtonState(undefined), 3000);
+      } else if (isError) {
+        console.error('Transaction failed:', error);
+        setButtonState('failed');
+        setErrorMessage('Transaction failed: ' + (error?.message || 'Unknown error'));
+        if (onError) onError(error?.message || 'Transaction failed');
+        setTimeout(() => setButtonState(undefined), 3000);
+      }
+    }
+  }, [isConfirmed, isConfirming, isError, error, transactionId, fetchBalance, checkTimeUntilNextClaim, onSuccess, onError, onClaimStatusUpdate]);
+
+  const handleClaim = async () => {
+    if (!MiniKit.isInstalled()) {
+      setButtonState('failed');
+      setErrorMessage('MiniKit is not installed');
+      if (onError) onError('MiniKit is not installed');
+      setTimeout(() => setButtonState(undefined), 3000);
+      return;
+    }
+
+    if (!walletAddress || walletAddress === '0x0') {
+      setButtonState('failed');
+      setErrorMessage('Wallet address is invalid');
+      if (onError) onError('Wallet address is invalid');
+      setTimeout(() => setButtonState(undefined), 3000);
+      return;
+    }
+
+    if (remainingTime > 0 || localHasClaimed) {
+      setButtonState('failed');
+      setErrorMessage('Please wait until next claim time or you have already claimed');
+      if (onError) onError('Please wait until next claim time or you have already claimed');
+      setTimeout(() => setButtonState(undefined), 3000);
+      return;
+    }
+
+    setButtonState('pending');
+    setTransactionId('');
+
+    try {
+      const transactionPayload = {
+        transaction: [
+          {
+            address: tokenAddress,
+            abi: TestContractABI,
+            functionName: 'claim',
+            args: [],
+          },
+        ],
+      };
+      const result = await MiniKit.commandsAsync.sendTransaction(transactionPayload);
+      const finalPayload = result as MiniAppTransactionPayload;
+      console.log('Transaction Payload:', transactionPayload);
+      console.log('Final Payload:', finalPayload);
+
+      // Type narrowing for status
+      if (typeof finalPayload.status === 'string' && finalPayload.status === 'success') {
+        console.log('Transaction submitted, waiting for confirmation:', finalPayload.transaction_id);
+        if (typeof finalPayload.transaction_id === 'string') {
+          setTransactionId(finalPayload.transaction_id);
+        }
+      } else {
+        console.error('Transaction submission failed or cancelled:', finalPayload);
+        if ('mini_app_id' in finalPayload && 'description' in finalPayload && typeof finalPayload.description === 'string' && finalPayload.description === '') {
+          setErrorMessage('Transaction cancelled by user');
+          if (onError) onError('Transaction cancelled by user');
+        } else {
+          setErrorMessage('Transaction failed: Please try again');
+          if (onError) onError('Transaction failed: Please try again');
+        }
+        setButtonState('failed');
+        setTimeout(() => setButtonState(undefined), 3000);
+      }
+    } catch (err) {
+      console.error('Error sending transaction:', err);
+      setButtonState('failed');
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      if (errorMsg.toLowerCase().includes('cancel') || errorMsg.toLowerCase().includes('user denied')) {
+        setErrorMessage('Transaction cancelled by user');
+        if (onError) onError('Transaction cancelled by user');
+      } else {
+        setErrorMessage('Error sending transaction: ' + errorMsg);
+        if (onError) onError('Error sending transaction: ' + errorMsg);
+      }
+      setTimeout(() => setButtonState(undefined), 3000);
+    }
+  };
+
+  return (
+    <div className="w-full flex flex-col items-center justify-center gap-4 p-4 sm:max-w-md">
+      <p className="text-base font-inter text-[#666666] mb-2">
+        Every human can claim every day.
+      </p>
+      {errorMessage && (
+        <p className="text-[#FF3333] font-inter text-base mb-2">{errorMessage}</p>
+      )}
+      <LiveFeedback
+        label={{
+          failed: 'Transaction failed',
+          pending: 'Transaction pending',
+          success: 'Transaction successful',
+        }}
+        state={buttonState}
+        className="w-full text-base font-inter text-[#666666]"
+      >
+        <Button
+          onClick={handleClaim}
+          disabled={buttonState === 'pending' || (remainingTime > 0 || localHasClaimed) || !walletAddress}
+          size="lg"
+          variant="primary"
+          className={`w-full py-3 text-base font-inter font-medium rounded-lg transition-colors ${
+            buttonState === 'pending' || (remainingTime > 0 || localHasClaimed) || !walletAddress
+              ? 'bg-[#E6E6E6] text-[#1A1A1A]'
+              : 'bg-[#006CFF] text-white hover:bg-[#0056CC]'
+          } focus:outline-none focus:ring-2 focus:ring-[#006CFF]`}
+        >
+          {formatCountdown(remainingTime)}
+        </Button>
+      </LiveFeedback>
+      {localHasClaimed && (
+        <p className="text-[#666666] text-base font-inter mt-2">
+          You have already claimed.
+        </p>
+      )}
+      <div className="flex items-center gap-2 mt-4">
+        <svg
+          className="w-6 h-6 text-[#006CFF]"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M12 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-2c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 12c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7-6-6-6z"
+          />
+        </svg>
+        <p className="text-lg font-inter font-semibold text-[#006CFF]">
+          Balance: {balance} RASH
+        </p>
+      </div>
+    </div>
+  );
+};

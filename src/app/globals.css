@@ -1,0 +1,114 @@
+@import 'tailwindcss';
+
+:root {
+  --background: #ffffff; /* Latar belakang putih sesuai pedoman */
+  --foreground: #000000; /* Teks utama hitam */
+  --accent: #006CFF; /* Biru Worldcoin sebagai aksen utama */
+  --accent-light: #0056CC; /* Biru lebih gelap untuk hover */
+  --gray-100: #E6E6E6; /* Abu-abu terang untuk latar belakang sekunder */
+  --gray-200: #CCCCCC; /* Abu-abu untuk elemen tambahan */
+  --text-secondary: #666666; /* Teks sekunder */
+  --error: #FF3333; /* Warna error */
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif; /* Ganti Arial dengan Inter */
+  margin: 0;
+  padding: 0;
+  height: 100dvh; /* Memastikan tinggi penuh layar untuk iOS */
+  width: 100%;
+  overflow-x: hidden; /* Mencegah scroll horizontal */
+  overscroll-behavior: none; /* Mencegah scroll bounce pada iOS */
+}
+
+/* Gaya untuk Accordion (tanpa checkbox) */
+.accordion {
+  width: 100%;
+}
+.accordion-item {
+  margin-bottom: 16px; /* Sesuaikan dengan kelipatan 4 */
+}
+.accordion-item .accordion-title {
+  display: block;
+  padding: 12px; /* Sesuaikan dengan pedoman 12px */
+  background-color: var(--gray-100);
+  cursor: pointer;
+  border-radius: 8px;
+  font-weight: 600; /* Sesuai pedoman untuk heading */
+  color: var(--foreground);
+  transition: background-color 0.3s ease;
+}
+.accordion-item .accordion-title:hover {
+  background-color: var(--gray-200);
+}
+.accordion-item .accordion-content {
+  display: none;
+  padding: 12px; /* Sesuaikan dengan pedoman 12px */
+  background-color: var(--background);
+  border-radius: 8px;
+  color: var(--text-secondary); /* Teks sekunder */
+}
+.accordion-item.active .accordion-content {
+  display: block;
+}
+
+/* Gaya tambahan untuk tombol dan transisi */
+button {
+  transition: all 0.3s ease;
+  background-color: var(--accent); /* Ganti ke #006CFF */
+  color: var(--background); /* Teks putih */
+  border: none;
+  border-radius: 8px;
+  padding: 12px; /* Sesuaikan dengan pedoman 12px */
+  font-family: 'Inter', sans-serif; /* Pastikan font konsisten */
+}
+button:hover:not(:disabled) {
+  background-color: var(--accent-light); /* Ganti ke #0056CC */
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: var(--gray-200); /* Sesuai pedoman untuk disabled */
+}
+
+/* Override gaya tombol-tab agar sesuai dengan desain Worldcoin */
+.tab-button {
+  background-color: var(--gray-100); /* Abu-abu untuk tab tidak aktif */
+  color: var(--foreground); /* Teks hitam */
+  padding: 8px 12px; /* Sesuaikan padding untuk kompak */
+  font-family: 'Inter', sans-serif;
+  border: 1px solid var(--gray-200); /* Border tipis */
+  border-bottom: none; /* Hilangkan border bawah untuk integrasi dengan border-b */
+  border-radius: 8px 8px 0 0; /* Radius atas saja */
+  min-width: 70px; /* Lebar minimum disesuaikan */
+  max-width: 80px; /* Lebar maksimum disesuaikan untuk ponsel */
+  text-align: center;
+  transition: all 0.3s ease;
+  font-size: 13px; /* Ukuran teks disesuaikan untuk kompak */
+}
+.tab-button:hover {
+  background-color: var(--gray-200); /* Efek hover */
+}
+.tab-button.active {
+  background-color: var(--accent); /* Biru untuk tab aktif */
+  color: var(--background); /* Teks putih */
+  border: 1px solid var(--accent); /* Border biru */
+  border-bottom: none; /* Hilangkan border bawah untuk integrasi */
+}
+
+/* Kontainer untuk tab agar responsif */
+.tab-container {
+  display: flex;
+  flex-wrap: nowrap; /* Pastikan tombol tidak membungkus ke baris berikutnya */
+  gap: 6px; /* Jarak antar tombol dikurangi */
+  max-width: 100%; /* Membatasi lebar maksimum */
+  overflow-x: hidden; /* Menghilangkan scroll horizontal */
+  white-space: nowrap; /* Mencegah tombol membungkus teks */
+  -webkit-overflow-scrolling: touch; /* Meningkatkan pengalaman scroll di iOS */
+  scrollbar-width: none; /* Sembunyikan scrollbar di Firefox */
+}
+.tab-container::-webkit-scrollbar {
+  display: none; /* Sembunyikan scrollbar di Chrome/Safari */
+}
