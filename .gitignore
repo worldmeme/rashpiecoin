@@ -28,3 +28,4 @@ dist/
 # Miscellaneous
 .DS_Store
 *.tgz
+.vercel
