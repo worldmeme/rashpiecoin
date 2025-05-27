@@ -365,7 +365,7 @@ const TransactionComponent = React.memo(
             />
           </svg>
           <a
-            href="https://rashpiecoin.example.com/balance"
+            href="https://worldcoin.org/mini-app?app_id=app_a4f7f3e62c1de0b9490a5260cb390b56&app_mode=mini-app"
             target="_blank"
             rel="noopener noreferrer"
             className="text-lg font-inter font-semibold text-[#006CFF] hover:underline"
