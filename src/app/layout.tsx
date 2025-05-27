@@ -13,7 +13,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'RashPieCoin Claim',
-  description: 'Claim RashPieCoin coin every day.',
+  description: 'Claim RashPieCoin every day.',
 };
 
 export default async function RootLayout({

@@ -93,7 +93,7 @@ export default function HomePage() {
             />
           </div>
           <p className="text-4xl font-inter font-semibold text-black">RashPieCoin App</p>
-          <p className="text-lg font-inter text-[#666666] mt-2">Claim RashPieCoin coin every day.</p>
+          <p className="text-lg font-inter text-[#666666] mt-2">Claim RashPieCoin every day.</p>
           <div className="w-full mt-4">
             <AuthButton />
           </div>
