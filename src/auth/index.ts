@@ -38,7 +38,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         finalPayloadJson: { label: 'Final Payload', type: 'text' },
       },
       authorize: async (credentials) => {
-        // Validasi bahwa semua properti ada dan bertipe string
         const nonce = credentials.nonce;
         const signedNonce = credentials.signedNonce;
         const finalPayloadJson = credentials.finalPayloadJson;
@@ -87,20 +86,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           ];
           const contract = new ethers.Contract(contractAddress, contractABI, provider);
 
-          const time = await contract.getNextClaimTime(finalPayload.address);
-          const remainingSeconds = Number(time);
+          const remainingSeconds = Number(await contract.getNextClaimTime(finalPayload.address));
           console.log(`Authorize - getNextClaimTime: ${remainingSeconds} seconds`);
 
-          const lastClaim = await contract.lastClaimTime(finalPayload.address);
+          const lastClaim = Number(await contract.lastClaimTime(finalPayload.address));
           console.log(`Authorize - lastClaimTime: ${lastClaim} (Unix timestamp)`);
 
           const balanceBigInt = await contract.balanceOf(finalPayload.address);
           console.log(`Authorize - Balance: ${ethers.formatUnits(balanceBigInt, 18)} RASH`);
 
-          hasClaimed = (lastClaim > 0 && remainingSeconds === 0) || balanceBigInt > 0;
-          console.log(`Authorize - Calculated hasClaimed: ${hasClaimed}`);
+          const currentTime = Math.floor(Date.now() / 1000);
+          const claimPeriod = 24 * 60 * 60; // 24 jam dalam detik
+          const timeSinceLastClaim = lastClaim > 0 ? currentTime - lastClaim : 0;
 
-          if (lastClaim > 0) console.log(`Authorize - lastClaim > 0 is true, remainingSeconds: ${remainingSeconds}`);
+          hasClaimed = (lastClaim > 0 || balanceBigInt > 0) && timeSinceLastClaim < claimPeriod;
+
+          console.log(`Authorize - Calculated hasClaimed: ${hasClaimed}`);
+          console.log(`Authorize - timeSinceLastClaim: ${timeSinceLastClaim} seconds`);
+          if (lastClaim > 0) console.log(`Authorize - lastClaim > 0 is true`);
           if (balanceBigInt > 0) console.log(`Authorize - balance > 0 is true, balance: ${ethers.formatUnits(balanceBigInt, 18)} RASH`);
         } catch (error) {
           console.error(`Authorize - Error checking claim status for ${finalPayload.address}:`, error);
@@ -110,8 +113,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const user = {
           id: finalPayload.address,
           walletAddress: finalPayload.address,
-          username: userInfo.username ?? '', // Berikan nilai default jika undefined
-          profilePictureUrl: userInfo.profilePictureUrl ?? '', // Berikan nilai default jika undefined
+          username: userInfo.username ?? '',
+          profilePictureUrl: userInfo.profilePictureUrl ?? '',
           hasClaimed,
         };
         console.log('Authorize - User object being returned:', user);
