@@ -16,7 +16,6 @@ interface MiniAppTransactionPayload {
   mini_app_id?: string;
   version?: number;
   transaction_id?: string;
-  // Use unknown for dynamic properties
   [key: string]: unknown;
 }
 
@@ -38,6 +37,7 @@ export const Transaction = ({
   const [buttonState, setButtonState] = useState<'pending' | 'success' | 'failed' | undefined>(undefined);
   const [transactionId, setTransactionId] = useState<string>('');
   const [balance, setBalance] = useState<string>('0');
+  const [previousBalance, setPreviousBalance] = useState<string>('0'); // Untuk membandingkan saldo sebelum dan sesudah
   const [remainingTime, setRemainingTime] = useState<number>(0);
   const [localHasClaimed, setLocalHasClaimed] = useState<boolean | null>(hasClaimed ?? null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -59,17 +59,20 @@ export const Transaction = ({
   const fetchBalance = useCallback(async () => {
     if (!walletAddress || walletAddress === '0x0') {
       setBalance('0');
-      return;
+      return '0';
     }
     try {
       const balanceBigInt = await contract.balanceOf(walletAddress);
       const balanceInTokens = ethers.formatUnits(balanceBigInt, 18);
-      setBalance(parseFloat(balanceInTokens).toFixed(2));
+      const formattedBalance = parseFloat(balanceInTokens).toFixed(2);
+      setBalance(formattedBalance);
       console.log(`Balance for ${walletAddress}: ${balanceInTokens} Rash`);
+      return formattedBalance;
     } catch (error) {
       console.error('Error fetching balance:', error);
       setBalance('0');
       setErrorMessage('Failed to fetch balance');
+      return '0';
     }
   }, [walletAddress, contract]);
 
@@ -124,7 +127,7 @@ export const Transaction = ({
 
   useEffect(() => {
     if (!walletAddress || walletAddress === '0x0') return;
-    fetchBalance();
+    fetchBalance().then((currentBalance) => setPreviousBalance(currentBalance));
     checkTimeUntilNextClaim();
 
     const syncInterval = setInterval(() => {
@@ -159,16 +162,27 @@ export const Transaction = ({
   });
 
   useEffect(() => {
+    console.log('Transaction Confirmation Status:', {
+      transactionId,
+      isConfirming,
+      isConfirmed,
+      isError,
+      error,
+    });
+
     if (transactionId && !isConfirming) {
       if (isConfirmed) {
         setButtonState('success');
-        fetchBalance();
+        fetchBalance().then((newBalance) => {
+          setPreviousBalance(newBalance);
+          setLocalHasClaimed(true);
+          setRemainingTime(24 * 60 * 60);
+          setErrorMessage(null);
+          if (onClaimStatusUpdate) onClaimStatusUpdate(true);
+          if (onSuccess) onSuccess();
+          setTimeout(() => setButtonState(undefined), 3000);
+        });
         checkTimeUntilNextClaim();
-        setLocalHasClaimed(true);
-        setRemainingTime(24 * 60 * 60);
-        if (onClaimStatusUpdate) onClaimStatusUpdate(true);
-        if (onSuccess) onSuccess();
-        setTimeout(() => setButtonState(undefined), 3000);
       } else if (isError) {
         console.error('Transaction failed:', error);
         setButtonState('failed');
@@ -206,6 +220,7 @@ export const Transaction = ({
 
     setButtonState('pending');
     setTransactionId('');
+    setErrorMessage(null);
 
     try {
       const transactionPayload = {
@@ -223,23 +238,48 @@ export const Transaction = ({
       console.log('Transaction Payload:', transactionPayload);
       console.log('Final Payload:', finalPayload);
 
-      // Type narrowing for status
-      if (typeof finalPayload.status === 'string' && finalPayload.status === 'success') {
+      // Simpan saldo sebelum transaksi
+      const balanceBefore = await fetchBalance();
+
+      // Check if transaction_id exists and set it
+      if (finalPayload && typeof finalPayload.transaction_id === 'string') {
+        setTransactionId(finalPayload.transaction_id);
         console.log('Transaction submitted, waiting for confirmation:', finalPayload.transaction_id);
-        if (typeof finalPayload.transaction_id === 'string') {
-          setTransactionId(finalPayload.transaction_id);
-        }
-      } else {
-        console.error('Transaction submission failed or cancelled:', finalPayload);
-        if ('mini_app_id' in finalPayload && 'description' in finalPayload && typeof finalPayload.description === 'string' && finalPayload.description === '') {
-          setErrorMessage('Transaction cancelled by user');
-          if (onError) onError('Transaction cancelled by user');
-        } else {
-          setErrorMessage('Transaction failed: Please try again');
-          if (onError) onError('Transaction failed: Please try again');
-        }
+      } else if (finalPayload && 'status' in finalPayload && finalPayload.status === 'error') {
+        // Handle explicit error from MiniKit
+        const description = typeof finalPayload.description === 'string' ? finalPayload.description : 'Unknown error';
+        console.error('Transaction submission failed:', description);
         setButtonState('failed');
+        setErrorMessage(`Transaction failed: ${description}`);
+        if (onError) onError(description);
         setTimeout(() => setButtonState(undefined), 3000);
+      } else {
+        // Fallback: Check balance change to confirm transaction success
+        console.warn('No transaction_id in payload, checking balance change:', finalPayload);
+        
+        // Tunggu beberapa detik untuk memastikan transaksi diproses di blockchain
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const balanceAfter = await fetchBalance();
+
+        if (parseFloat(balanceAfter) > parseFloat(balanceBefore)) {
+          // Transaksi berhasil meskipun tanpa transaction_id
+          setButtonState('success');
+          setLocalHasClaimed(true);
+          setRemainingTime(24 * 60 * 60);
+          setErrorMessage(null);
+          setPreviousBalance(balanceAfter);
+          if (onClaimStatusUpdate) onClaimStatusUpdate(true);
+          if (onSuccess) onSuccess();
+          setTimeout(() => setButtonState(undefined), 3000);
+          checkTimeUntilNextClaim();
+        } else {
+          // Jika saldo tidak bertambah, anggap transaksi gagal
+          console.error('No balance change detected, assuming transaction failed:', finalPayload);
+          setButtonState('failed');
+          setErrorMessage('Transaction failed: No balance change detected');
+          if (onError) onError('No balance change detected');
+          setTimeout(() => setButtonState(undefined), 3000);
+        }
       }
     } catch (err) {
       console.error('Error sending transaction:', err);
