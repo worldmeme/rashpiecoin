@@ -9,7 +9,7 @@ interface ErudaWindow extends Window {
     init(): void;
     destroy(): void;
     _hide?(): void;
-    [key: string]: any;
+    [key: string]: unknown; // Ganti 'any' dengan 'unknown'
   };
 }
 
@@ -19,7 +19,7 @@ export const Eruda = ({ children }: { children: ReactNode }) => {
       loadEruda()
         .then(({ default: eruda }) => {
           try {
-            const erudaWindow = window as unknown as ErudaWindow;
+            const erudaWindow = window as ErudaWindow;
             if (!erudaWindow.eruda) {
               eruda.init();
             } else {
@@ -34,7 +34,7 @@ export const Eruda = ({ children }: { children: ReactNode }) => {
         });
 
       return () => {
-        const erudaWindow = window as unknown as ErudaWindow;
+        const erudaWindow = window as ErudaWindow;
         if (erudaWindow.eruda?.destroy) {
           erudaWindow.eruda.destroy();
         }

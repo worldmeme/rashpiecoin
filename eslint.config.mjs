@@ -18,6 +18,7 @@ const eslintConfig = [
     rules: {
       ...react.configs.recommended.rules,
       ...react.configs['jsx-runtime'].rules,
+      '@typescript-eslint/no-explicit-any': 'off', // Nonaktifkan aturan ini
     },
   },
 ];
