@@ -37,10 +37,11 @@ export const Transaction = ({
   const [buttonState, setButtonState] = useState<'pending' | 'success' | 'failed' | undefined>(undefined);
   const [transactionId, setTransactionId] = useState<string>('');
   const [balance, setBalance] = useState<string>('0');
-  const [previousBalance, setPreviousBalance] = useState<string>('0'); // Untuk membandingkan saldo sebelum dan sesudah
+  const [previousBalance, setPreviousBalance] = useState<string>('0');
   const [remainingTime, setRemainingTime] = useState<number>(0);
   const [localHasClaimed, setLocalHasClaimed] = useState<boolean | null>(hasClaimed ?? null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showError, setShowError] = useState<boolean>(false); // State baru untuk mengontrol visibilitas error
 
   const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || '0xFc412dfA69B469deD63664E82A89857E1E49C132';
   const appId = process.env.NEXT_PUBLIC_APP_ID;
@@ -72,6 +73,8 @@ export const Transaction = ({
       console.error('Error fetching balance:', error);
       setBalance('0');
       setErrorMessage('Failed to fetch balance');
+      setShowError(true); // Tampilkan error
+      setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
       return '0';
     }
   }, [walletAddress, contract]);
@@ -108,11 +111,13 @@ export const Transaction = ({
       }
 
       if (onClaimStatusUpdate) onClaimStatusUpdate(hasClaimedFromContract);
+      setErrorMessage(null); // Hapus error jika sukses
+      setShowError(false); // Sembunyikan error
     } catch (error) {
       console.error('Error checking time until next claim:', error);
-      setRemainingTime(0);
-      setLocalHasClaimed(false);
       setErrorMessage('Failed to check claim status');
+      setShowError(true); // Tampilkan error
+      setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
       if (onError) onError('Failed to check claim status');
     }
   }, [walletAddress, contract, onClaimStatusUpdate, onError]);
@@ -178,6 +183,7 @@ export const Transaction = ({
           setLocalHasClaimed(true);
           setRemainingTime(24 * 60 * 60);
           setErrorMessage(null);
+          setShowError(false); // Sembunyikan error
           if (onClaimStatusUpdate) onClaimStatusUpdate(true);
           if (onSuccess) onSuccess();
           setTimeout(() => setButtonState(undefined), 3000);
@@ -187,6 +193,8 @@ export const Transaction = ({
         console.error('Transaction failed:', error);
         setButtonState('failed');
         setErrorMessage('Transaction failed: ' + (error?.message || 'Unknown error'));
+        setShowError(true); // Tampilkan error
+        setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
         if (onError) onError(error?.message || 'Transaction failed');
         setTimeout(() => setButtonState(undefined), 3000);
       }
@@ -197,6 +205,8 @@ export const Transaction = ({
     if (!MiniKit.isInstalled()) {
       setButtonState('failed');
       setErrorMessage('MiniKit is not installed');
+      setShowError(true); // Tampilkan error
+      setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
       if (onError) onError('MiniKit is not installed');
       setTimeout(() => setButtonState(undefined), 3000);
       return;
@@ -205,6 +215,8 @@ export const Transaction = ({
     if (!walletAddress || walletAddress === '0x0') {
       setButtonState('failed');
       setErrorMessage('Wallet address is invalid');
+      setShowError(true); // Tampilkan error
+      setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
       if (onError) onError('Wallet address is invalid');
       setTimeout(() => setButtonState(undefined), 3000);
       return;
@@ -213,6 +225,8 @@ export const Transaction = ({
     if (remainingTime > 0 || localHasClaimed) {
       setButtonState('failed');
       setErrorMessage('Please wait until next claim time or you have already claimed');
+      setShowError(true); // Tampilkan error
+      setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
       if (onError) onError('Please wait until next claim time or you have already claimed');
       setTimeout(() => setButtonState(undefined), 3000);
       return;
@@ -221,6 +235,7 @@ export const Transaction = ({
     setButtonState('pending');
     setTransactionId('');
     setErrorMessage(null);
+    setShowError(false); // Sembunyikan error sebelum memulai
 
     try {
       const transactionPayload = {
@@ -238,45 +253,43 @@ export const Transaction = ({
       console.log('Transaction Payload:', transactionPayload);
       console.log('Final Payload:', finalPayload);
 
-      // Simpan saldo sebelum transaksi
       const balanceBefore = await fetchBalance();
 
-      // Check if transaction_id exists and set it
       if (finalPayload && typeof finalPayload.transaction_id === 'string') {
         setTransactionId(finalPayload.transaction_id);
         console.log('Transaction submitted, waiting for confirmation:', finalPayload.transaction_id);
       } else if (finalPayload && 'status' in finalPayload && finalPayload.status === 'error') {
-        // Handle explicit error from MiniKit
         const description = typeof finalPayload.description === 'string' ? finalPayload.description : 'Unknown error';
         console.error('Transaction submission failed:', description);
         setButtonState('failed');
         setErrorMessage(`Transaction failed: ${description}`);
+        setShowError(true); // Tampilkan error
+        setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
         if (onError) onError(description);
         setTimeout(() => setButtonState(undefined), 3000);
       } else {
-        // Fallback: Check balance change to confirm transaction success
         console.warn('No transaction_id in payload, checking balance change:', finalPayload);
         
-        // Tunggu beberapa detik untuk memastikan transaksi diproses di blockchain
         await new Promise((resolve) => setTimeout(resolve, 5000));
         const balanceAfter = await fetchBalance();
 
         if (parseFloat(balanceAfter) > parseFloat(balanceBefore)) {
-          // Transaksi berhasil meskipun tanpa transaction_id
           setButtonState('success');
           setLocalHasClaimed(true);
           setRemainingTime(24 * 60 * 60);
           setErrorMessage(null);
+          setShowError(false); // Sembunyikan error
           setPreviousBalance(balanceAfter);
           if (onClaimStatusUpdate) onClaimStatusUpdate(true);
           if (onSuccess) onSuccess();
           setTimeout(() => setButtonState(undefined), 3000);
           checkTimeUntilNextClaim();
         } else {
-          // Jika saldo tidak bertambah, anggap transaksi gagal
           console.error('No balance change detected, assuming transaction failed:', finalPayload);
           setButtonState('failed');
           setErrorMessage('Transaction failed: No balance change detected');
+          setShowError(true); // Tampilkan error
+          setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
           if (onError) onError('No balance change detected');
           setTimeout(() => setButtonState(undefined), 3000);
         }
@@ -287,9 +300,13 @@ export const Transaction = ({
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       if (errorMsg.toLowerCase().includes('cancel') || errorMsg.toLowerCase().includes('user denied')) {
         setErrorMessage('Transaction cancelled by user');
+        setShowError(true); // Tampilkan error
+        setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
         if (onError) onError('Transaction cancelled by user');
       } else {
         setErrorMessage('Error sending transaction: ' + errorMsg);
+        setShowError(true); // Tampilkan error
+        setTimeout(() => setShowError(false), 5000); // Hilang setelah 5 detik
         if (onError) onError('Error sending transaction: ' + errorMsg);
       }
       setTimeout(() => setButtonState(undefined), 3000);
@@ -301,7 +318,7 @@ export const Transaction = ({
       <p className="text-base font-inter text-[#666666] mb-2">
         Every human can claim every day.
       </p>
-      {errorMessage && (
+      {showError && errorMessage && (
         <p className="text-[#FF3333] font-inter text-base mb-2">{errorMessage}</p>
       )}
       <LiveFeedback
@@ -347,9 +364,14 @@ export const Transaction = ({
             d="M12 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-2c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 12c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7-6-6-6z"
           />
         </svg>
-        <p className="text-lg font-inter font-semibold text-[#006CFF]">
+        <a
+          href="https://worldcoin.org/mini-app?app_id=app_a4f7f3e62c1de0b9490a5260cb390b56&app_mode=mini-app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-lg font-inter font-semibold text-[#006CFF] hover:underline"
+        >
           Balance: {balance} RASH
-        </p>
+        </a>
       </div>
     </div>
   );
