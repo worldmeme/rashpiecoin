@@ -255,13 +255,13 @@ export default function HomePage() {
                       Buy and Sell Rash
                     </button>
                     <button
-                      onClick={() => (window.location.href = '/buy-wld')}
+                      onClick={() => (window.location.href = 'https://accounts.bmwweb.me/register?ref=ZKO2JGYW')}
                       className="w-full sm:w-auto bg-[#006CFF] text-white font-inter py-3 px-6 rounded-lg hover:bg-[#0056CC] text-base transition-colors focus:outline-none focus:ring-2 focus:ring-[#006CFF]"
                     >
                       Buy WLD
                     </button>
                     <a
-                      href="https://x.com/yourprofile"
+                      href="https://x.com/RashPieCoin"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#14171A] font-inter py-3 px-6 rounded-lg hover:bg-[#272c30] text-base transition-colors !text-white focus:outline-none focus:ring-2 focus:ring-[#006CFF]"
