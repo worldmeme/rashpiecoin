@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: [
-    'https://9898-2001-448a-20e0-9ecc-2c77-d04d-de44-4ecf.ngrok-free.app',
+    'https://2302-2001-448a-20e0-9ecc-442c-f71a-fdad-19df.ngrok-free.app',
   ],
   images: {
     domains: ['static.usernames.app-backend.toolsforhumanity.com'],

@@ -222,7 +222,6 @@ export default function HomePage() {
                   <p className="text-base font-inter text-[#666666] mt-2 leading-relaxed">
                     Invite your friends to grow the Worldcoin community together and unlock a brighter future for all!
                   </p>
-                  {error && <p className="text-[#FF3333] font-inter text-base mt-2">{error}</p>}
                   <div className="mt-4">
                     <h3 className="text-lg font-inter font-semibold text-black">Share Invite Code</h3>
                     <button

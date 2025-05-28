@@ -1,4 +1,4 @@
-'use client'; // Pastikan ini ada di baris pertama
+'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import TestContractABI from '@/abi/TestContract.json';
@@ -26,6 +26,24 @@ interface TransactionProps {
   onClaimStatusUpdate?: (hasClaimed: boolean) => void;
 }
 
+const quizQuestions = [
+  {
+    question: "What is the purpose of RashPieCoin?",
+    options: ["To play games", "To learn about blockchain", "To claim free tokens daily", "To buy NFTs"],
+    correctAnswer: "To claim free tokens daily",
+  },
+  {
+    question: "Which blockchain does RashPieCoin use?",
+    options: ["Ethereum", "Worldchain", "Solana", "Polygon"],
+    correctAnswer: "Worldchain",
+  },
+  {
+    question: "How often can you claim RashPieCoin tokens?",
+    options: ["Every hour", "Every day", "Every week", "Every month"],
+    correctAnswer: "Every day",
+  },
+];
+
 const TransactionComponent = React.memo(
   ({
     walletAddress,
@@ -38,10 +56,14 @@ const TransactionComponent = React.memo(
     const [transactionId, setTransactionId] = useState<string>('');
     const [balance, setBalance] = useState<string>('0');
     const [remainingTime, setRemainingTime] = useState<number>(0);
-    const [localHasClaimed, setLocalHasClaimed] = useState<boolean | null>(hasClaimed ?? false);
+    const [localHasClaimed, setLocalHasClaimed] = useState<boolean | null>(hasClaimed ?? null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [showError, setShowError] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [quizCompleted, setQuizCompleted] = useState<boolean>(false);
+    const [currentQuestion, setCurrentQuestion] = useState<any>(null);
+    const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+    const [quizFeedback, setQuizFeedback] = useState<string | null>(null);
 
     const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || '0xc08C1CE8063f4d2FcC387aebb863313126Cee975';
     const appId = process.env.NEXT_PUBLIC_APP_ID;
@@ -57,25 +79,33 @@ const TransactionComponent = React.memo(
 
     const contract = useMemo(() => new ethers.Contract(tokenAddress, TestContractABI, provider), [tokenAddress, provider]);
 
-    const fetchBalance = useCallback(async () => {
+    const fetchBalance = useCallback(async (retries = 5, delay = 2000): Promise<string> => {
       if (!walletAddress || walletAddress === '0x0') {
         setBalance('0');
         return '0';
       }
-      try {
-        const balanceBigInt = await contract.balanceOf(walletAddress);
-        const balanceInTokens = ethers.formatUnits(balanceBigInt, 18);
-        const formattedBalance = parseFloat(balanceInTokens).toFixed(2);
-        setBalance(formattedBalance);
-        return formattedBalance;
-      } catch (error) {
-        console.error('Error fetching balance:', error);
-        setBalance('0');
-        setErrorMessage('Failed to fetch balance');
-        setShowError(true);
-        setTimeout(() => setShowError(false), 5000);
-        return '0';
+      for (let i = 0; i < retries; i++) {
+        try {
+          const balanceBigInt = await contract.balanceOf(walletAddress, { blockTag: 'latest' });
+          const balanceInTokens = ethers.formatUnits(balanceBigInt, 18);
+          const formattedBalance = parseFloat(balanceInTokens).toFixed(2);
+          setBalance(formattedBalance);
+          return formattedBalance;
+        } catch (error) {
+          console.error(`Error fetching balance (attempt ${i + 1}/${retries}):`, error);
+          if (i < retries - 1) {
+            const waitTime = delay * (i + 1); // Delay bertahap: 2s, 4s, 6s, dll.
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+          } else {
+            setBalance('0');
+            setErrorMessage('Failed to fetch balance after retries');
+            setShowError(true);
+            setTimeout(() => setShowError(false), 5000);
+            return '0';
+          }
+        }
       }
+      return '0';
     }, [walletAddress, contract]);
 
     const checkTimeUntilNextClaim = useCallback(async () => {
@@ -117,18 +147,23 @@ const TransactionComponent = React.memo(
         const newTime = Math.max(0, prev - 1);
         if (newTime <= 0 && localHasClaimed) {
           setLocalHasClaimed(false);
+          setQuizCompleted(false);
         }
         return newTime;
       });
     }, [localHasClaimed]);
 
     const formatCountdown = (seconds: number) => {
-      if (seconds <= 0 && !localHasClaimed) return 'Get Token';
+      if (seconds <= 0 && !localHasClaimed) return quizCompleted ? 'Get Token' : 'Complete Quiz';
       const hours = Math.floor(seconds / 3600).toString().padStart(2, '0');
       const minutes = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
       const secs = (seconds % 60).toString().padStart(2, '0');
       return `Wait ${hours}h ${minutes}m ${secs}s`;
     };
+
+    useEffect(() => {
+      setCurrentQuestion(quizQuestions[Math.floor(Math.random() * quizQuestions.length)]);
+    }, []);
 
     useEffect(() => {
       if (!walletAddress || walletAddress === '0x0') {
@@ -144,7 +179,7 @@ const TransactionComponent = React.memo(
           fetchBalance();
           checkTimeUntilNextClaim();
         }
-      }, 10000);
+      }, 10000); // Kembali ke 10 detik
 
       const countdownInterval = setInterval(updateCountdown, 1000);
 
@@ -172,6 +207,8 @@ const TransactionComponent = React.memo(
           fetchBalance().then(() => {
             setLocalHasClaimed(true);
             setRemainingTime(24 * 60 * 60);
+            setQuizCompleted(false);
+            setCurrentQuestion(quizQuestions[Math.floor(Math.random() * quizQuestions.length)]);
             setErrorMessage(null);
             setShowError(false);
             if (onClaimStatusUpdate) onClaimStatusUpdate(true);
@@ -191,6 +228,21 @@ const TransactionComponent = React.memo(
       }
     }, [isConfirmed, isConfirming, isError, error, transactionId, fetchBalance, checkTimeUntilNextClaim, onSuccess, onError, onClaimStatusUpdate]);
 
+    const handleAnswer = (answer: string) => {
+      setSelectedAnswer(answer);
+      if (answer === currentQuestion.correctAnswer) {
+        setQuizFeedback('Correct! You can now claim your token.');
+        setQuizCompleted(true);
+      } else {
+        setQuizFeedback('Incorrect. Please try again.');
+        setTimeout(() => {
+          setQuizFeedback(null);
+          setSelectedAnswer(null);
+          setCurrentQuestion(quizQuestions[Math.floor(Math.random() * quizQuestions.length)]);
+        }, 2000);
+      }
+    };
+
     const handleClaim = async () => {
       if (!MiniKit.isInstalled()) {
         setButtonState('failed');
@@ -208,6 +260,16 @@ const TransactionComponent = React.memo(
         setShowError(true);
         setTimeout(() => setShowError(false), 5000);
         if (onError) onError('Wallet address is invalid');
+        setTimeout(() => setButtonState(undefined), 3000);
+        return;
+      }
+
+      if (remainingTime > 0 && !localHasClaimed && !quizCompleted) {
+        setButtonState('failed');
+        setErrorMessage('Please complete the quiz first');
+        setShowError(true);
+        setTimeout(() => setShowError(false), 5000);
+        if (onError) onError('Please complete the quiz first');
         setTimeout(() => setButtonState(undefined), 3000);
         return;
       }
@@ -238,12 +300,13 @@ const TransactionComponent = React.memo(
             },
           ],
         };
+        console.log('Attempting to send transaction with payload:', transactionPayload);
         const result = await MiniKit.commandsAsync.sendTransaction(transactionPayload);
         const finalPayload = result as MiniAppTransactionPayload;
-        console.log('Transaction Payload:', transactionPayload);
-        console.log('Final Payload:', finalPayload);
+        console.log('Transaction result:', finalPayload);
 
         const balanceBefore = await fetchBalance();
+        console.log('Balance before transaction:', balanceBefore);
 
         if (finalPayload && typeof finalPayload.transaction_id === 'string') {
           setTransactionId(finalPayload.transaction_id);
@@ -259,11 +322,12 @@ const TransactionComponent = React.memo(
           setTimeout(() => setButtonState(undefined), 3000);
         } else {
           console.warn('No transaction_id in payload, checking balance change:', finalPayload);
-
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 15000));
           const balanceAfter = await fetchBalance();
+          console.log('Balance after transaction:', balanceAfter);
 
-          if (parseFloat(balanceAfter) > parseFloat(balanceBefore)) {
+          if (Number(balanceAfter) > Number(balanceBefore)) {
+            console.log('Transaction successful, balance increased');
             setButtonState('success');
             setLocalHasClaimed(true);
             setRemainingTime(24 * 60 * 60);
@@ -310,6 +374,39 @@ const TransactionComponent = React.memo(
         {showError && errorMessage && (
           <p className="text-[#FF3333] font-inter text-base mb-2">{errorMessage}</p>
         )}
+        {!isLoading && !quizCompleted && remainingTime <= 0 && !localHasClaimed && currentQuestion && (
+          <div className="w-full flex flex-col gap-2 mb-4">
+            <p className="text-base font-inter text-[#1A1A1A] font-semibold">
+              Answer this question to claim your token:
+            </p>
+            <p className="text-base font-inter text-[#1A1A1A]">{currentQuestion.question}</p>
+            <div className="flex flex-col gap-2">
+              {currentQuestion.options.map((option: string, index: number) => (
+                <Button
+                  key={index}
+                  onClick={() => handleAnswer(option)}
+                  disabled={selectedAnswer !== null}
+                  size="sm"
+                  variant="secondary"
+                  className={`w-full py-2 text-base font-inter rounded-lg transition-colors ${
+                    selectedAnswer === option
+                      ? option === currentQuestion.correctAnswer
+                        ? 'bg-[#006CFF] text-white'
+                        : 'bg-[#FF3333] text-white'
+                      : 'bg-[#E6E6E6] text-[#1A1A1A] hover:bg-[#D6D6D6]'
+                  }`}
+                >
+                  {option}
+                </Button>
+              ))}
+            </div>
+            {quizFeedback && (
+              <p className={`text-base font-inter mt-2 ${quizFeedback.includes('Correct') ? 'text-[#006CFF]' : 'text-[#FF3333]'}`}>
+                {quizFeedback}
+              </p>
+            )}
+          </div>
+        )}
         <LiveFeedback
           label={{
             failed: 'Transaction failed',
@@ -331,11 +428,19 @@ const TransactionComponent = React.memo(
           ) : (
             <Button
               onClick={handleClaim}
-              disabled={buttonState === 'pending' || (remainingTime > 0 || localHasClaimed) || !walletAddress}
+              disabled={
+                buttonState === 'pending' ||
+                (remainingTime > 0 || localHasClaimed) ||
+                !walletAddress ||
+                (!quizCompleted && remainingTime <= 0 && !localHasClaimed)
+              }
               size="lg"
               variant="primary"
               className={`w-full py-3 text-base font-inter font-medium rounded-lg transition-colors ${
-                buttonState === 'pending' || (remainingTime > 0 || localHasClaimed) || !walletAddress
+                buttonState === 'pending' ||
+                (remainingTime > 0 || localHasClaimed) ||
+                !walletAddress ||
+                (!quizCompleted && remainingTime <= 0 && !localHasClaimed)
                   ? 'bg-[#E6E6E6] text-[#1A1A1A]'
                   : 'bg-[#006CFF] text-white hover:bg-[#0056CC]'
               } focus:outline-none focus:ring-2 focus:ring-[#006CFF]`}
@@ -349,7 +454,7 @@ const TransactionComponent = React.memo(
             You have already claimed.
           </p>
         )}
-        <div className="flex items-center gap-2 mt-4">
+        <div className="w-full flex items-center justify-center gap-2 mt-4">
           <svg
             className="w-6 h-6 text-[#006CFF]"
             fill="none"
@@ -378,7 +483,6 @@ const TransactionComponent = React.memo(
   }
 );
 
-// Tetapkan displayName setelah memo
 TransactionComponent.displayName = 'TransactionComponent';
 
 export { TransactionComponent as Transaction };
