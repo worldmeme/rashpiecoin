@@ -223,7 +223,7 @@ export default function HomePage() {
                   </a>
                   <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
                     <button
-                      onClick={() => (window.location.href = 'https://worldcoin.org/mini-app?app_id=app_a4f7f3e62c1de0b9490a5260cb390b56&app_mode=mini-app')}
+                      onClick={() => (window.location.href = 'https://worldcoin.org/mini-app?app_id=app_a4f7f3e62c1de0b9490a5260cb390b56&path=%3Ftab%3Dswap%26fromToken%3D0x3050c0A0A4466628e56D04DE48787C520EF4E445%26amount%3D1234500%26toToken%3D0x2cfc85d8e48f8eab294be644d9e25c3030863003')}
                       className="w-full sm:w-auto bg-[#006CFF] text-white font-inter py-3 px-6 rounded-lg hover:bg-[#0056CC] text-base transition-colors focus:outline-none focus:ring-2 focus:ring-[#006CFF]"
                     >
                       Buy and Sell RASH
